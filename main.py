@@ -1081,6 +1081,27 @@ def create_product(product_data: schemas.ProductCreate, db: Session = Depends(ge
     db.add(new_product)
     db.commit()
     db.refresh(new_product)
+
+    if mongo_db.is_mongo_active():
+        try:
+            mongo_db.mongo_save_product({
+                "id": new_product.id,
+                "title": new_product.title,
+                "category": new_product.category,
+                "price": new_product.price,
+                "original_price": new_product.original_price,
+                "unit": new_product.unit,
+                "image": new_product.image,
+                "badge": new_product.badge,
+                "discount": new_product.discount,
+                "description": new_product.description,
+                "nutrition": new_product.nutrition,
+                "supplier_name": new_product.supplier_name
+            })
+            print(f"[MONGODB SYNC SUCCESS] Product '{new_product.title}' saved to MongoDB Atlas!")
+        except Exception as m_err:
+            print(f"[MONGODB SYNC NOTICE] Could not save product to MongoDB: {m_err}")
+
     return new_product
 
 @app.put("/api/products/{product_id}", response_model=schemas.ProductResponse)
@@ -1398,6 +1419,22 @@ def toggle_wishlist_item(payload: schemas.WishlistToggle, db: Session = Depends(
 # COUPONS API ENDPOINTS
 @app.get("/api/coupons", response_model=List[schemas.CouponResponse])
 def get_coupons(db: Session = Depends(get_db)):
+    if mongo_db.is_mongo_active():
+        m_coupons = mongo_db.mongo_get_all_coupons()
+        if m_coupons:
+            res = []
+            for idx, c in enumerate(m_coupons):
+                if c.get("is_active") is False:
+                    continue
+                res.append(schemas.CouponResponse(
+                    id=idx + 1,
+                    code=str(c.get("code", "")).upper(),
+                    discount_percent=float(c.get("discount_percent") or c.get("discount") or 0.0),
+                    min_order=float(c.get("min_order") or 0.0),
+                    description=str(c.get("description", "")),
+                    is_active=bool(c.get("is_active", True))
+                ))
+            return res
     return db.query(models.Coupon).filter(models.Coupon.is_active == True).all()
 
 @app.post("/api/coupons", response_model=schemas.CouponResponse)
@@ -1415,19 +1452,50 @@ def create_coupon(coupon_data: schemas.CouponCreate, db: Session = Depends(get_d
     db.add(new_coupon)
     db.commit()
     db.refresh(new_coupon)
+
+    if mongo_db.is_mongo_active():
+        try:
+            mongo_db.mongo_save_coupon({
+                "id": str(new_coupon.id),
+                "code": new_coupon.code,
+                "discount": new_coupon.discount_percent,
+                "discount_percent": new_coupon.discount_percent,
+                "min_order": new_coupon.min_order,
+                "description": new_coupon.description,
+                "is_active": new_coupon.is_active
+            })
+            print(f"[MONGODB SYNC SUCCESS] Coupon '{new_coupon.code}' saved to MongoDB Atlas!")
+        except Exception:
+            pass
+
     return new_coupon
 
 @app.delete("/api/coupons/{coupon_id}")
 def delete_coupon(coupon_id: int, db: Session = Depends(get_db)):
     coupon = db.query(models.Coupon).filter(models.Coupon.id == coupon_id).first()
     if coupon:
+        code_del = coupon.code
         db.delete(coupon)
         db.commit()
+        if mongo_db.is_mongo_active():
+            mongo_db.mongo_delete_coupon(code_del)
     return {"message": "Coupon deleted"}
 
 # SERVICEABLE LOCATIONS API ENDPOINTS
 @app.get("/api/locations", response_model=List[schemas.LocationResponse])
 def get_locations(db: Session = Depends(get_db)):
+    if mongo_db.is_mongo_active():
+        m_locs = mongo_db.mongo_get_all_locations()
+        if m_locs:
+            res = []
+            for idx, l in enumerate(m_locs):
+                res.append(schemas.LocationResponse(
+                    id=idx + 1,
+                    city=str(l.get("city", "Mumbai")),
+                    pincode=str(l.get("pincode", "")),
+                    delivery_time=str(l.get("delivery_time", "15 Mins"))
+                ))
+            return res
     return db.query(models.Location).all()
 
 @app.post("/api/locations", response_model=schemas.LocationResponse)
@@ -1443,6 +1511,19 @@ def create_location(loc_data: schemas.LocationCreate, db: Session = Depends(get_
     db.add(new_loc)
     db.commit()
     db.refresh(new_loc)
+
+    if mongo_db.is_mongo_active():
+        try:
+            mongo_db.mongo_save_location({
+                "id": str(new_loc.id),
+                "city": new_loc.city,
+                "pincode": new_loc.pincode,
+                "delivery_time": new_loc.delivery_time
+            })
+            print(f"[MONGODB SYNC SUCCESS] Location '{new_loc.pincode}' saved to MongoDB Atlas!")
+        except Exception:
+            pass
+
     return new_loc
 
 @app.delete("/api/locations/{location_id}")
