@@ -1116,7 +1116,7 @@ function renderAdminCouponsList() {
     `).join('');
 }
 
-window.handleCreateCouponSubmit = function(e) {
+window.handleCreateCouponSubmit = async function(e) {
     if (e) e.preventDefault();
     const codeInput = document.getElementById('couponCodeInput');
     const discountInput = document.getElementById('couponDiscountInput');
@@ -1138,7 +1138,7 @@ window.handleCreateCouponSubmit = function(e) {
         return;
     }
 
-    if (state.coupons.some(c => c.code === code)) {
+    if (state.coupons.some(c => c.code.toUpperCase() === code)) {
         showToast(`Coupon code <strong>${code}</strong> already exists!`, 'info');
         return;
     }
@@ -1151,19 +1151,50 @@ window.handleCreateCouponSubmit = function(e) {
         targetUser: target === 'user' ? targetUser : ''
     };
 
-    state.coupons.unshift(newCoupon);
-    // Coupons persisted in SQLite
-    if (document.getElementById('adminCouponForm')) document.getElementById('adminCouponForm').reset();
-    if (document.getElementById('couponTargetUserGroup')) document.getElementById('couponTargetUserGroup').classList.add('hidden');
-    renderAdminCouponsList();
-    showToast(`Created coupon <strong>${code}</strong> (${discount}% OFF)!`, 'success');
+    try {
+        const response = await fetchWithTimeout(`${API_BASE_URL}/coupons`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                code: code,
+                discount_percent: discount,
+                min_order: 0,
+                description: `${discount}% OFF Promo Coupon`,
+                is_active: true
+            })
+        }, 15000);
+
+        if (response && response.ok) {
+            const data = await response.json();
+            if (data && data.id) newCoupon.id = String(data.id);
+            state.coupons.unshift(newCoupon);
+            if (document.getElementById('adminCouponForm')) document.getElementById('adminCouponForm').reset();
+            if (document.getElementById('couponTargetUserGroup')) document.getElementById('couponTargetUserGroup').classList.add('hidden');
+            renderAdminCouponsList();
+            showToast(`Created coupon <strong>${code}</strong> (${discount}% OFF) in MongoDB database!`, 'success');
+        } else {
+            let errText = 'Failed to save coupon to database.';
+            try {
+                const errJson = await response.json();
+                if (errJson && errJson.detail) errText = errJson.detail;
+            } catch (err) {}
+            showToast(`❌ Error: ${errText}`, 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Connection Error: ${err.message || err}`, 'error');
+    }
 };
 
-window.deleteCouponByAdmin = function(couponId) {
-    state.coupons = state.coupons.filter(c => c.id !== couponId);
-    // Coupons persisted in SQLite
+window.deleteCouponByAdmin = async function(couponId) {
+    state.coupons = state.coupons.filter(c => String(c.id) !== String(couponId));
     renderAdminCouponsList();
-    showToast('Coupon removed', 'info');
+
+    try {
+        await fetch(`${API_BASE_URL}/coupons/${couponId}`, { method: 'DELETE' });
+        showToast('Coupon removed from database', 'info');
+    } catch (e) {
+        showToast('Removed coupon locally', 'info');
+    }
 };
 
 // Admin Serviceable Locations & Pincodes Management
@@ -1378,7 +1409,7 @@ window.toggleCheckoutAddressMode = function(mode) {
     }
 };
 
-window.handleCreateLocationSubmit = function(e) {
+window.handleCreateLocationSubmit = async function(e) {
     if (e) e.preventDefault();
     const areaInput = document.getElementById('locationAreaInput');
     const pincodeInput = document.getElementById('locationPincodeInput');
@@ -1391,7 +1422,7 @@ window.handleCreateLocationSubmit = function(e) {
         return;
     }
 
-    if (state.serviceableLocations.some(l => l.pincode === pincode)) {
+    if (state.serviceableLocations.some(l => String(l.pincode) === String(pincode))) {
         showToast(`Pincode <strong>${pincode}</strong> is already registered!`, 'info');
         return;
     }
@@ -1402,20 +1433,45 @@ window.handleCreateLocationSubmit = function(e) {
         pincode
     };
 
-    state.serviceableLocations.unshift(newLoc);
-    // Locations persisted in SQLite
-    if (document.getElementById('adminLocationForm')) document.getElementById('adminLocationForm').reset();
-    renderAdminLocationsList();
-    renderServiceableCitiesDatalist();
-    showToast(`Added serviceable pincode <strong>${pincode}</strong> (${area})!`, 'success');
+    try {
+        const response = await fetchWithTimeout(`${API_BASE_URL}/locations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ city: area, pincode: pincode, delivery_time: '15 Mins' })
+        }, 15000);
+
+        if (response && response.ok) {
+            const data = await response.json();
+            if (data && data.id) newLoc.id = String(data.id);
+            state.serviceableLocations.unshift(newLoc);
+            if (document.getElementById('adminLocationForm')) document.getElementById('adminLocationForm').reset();
+            renderAdminLocationsList();
+            renderServiceableCitiesDatalist();
+            showToast(`Added serviceable pincode <strong>${pincode}</strong> (${area}) to MongoDB database!`, 'success');
+        } else {
+            let errText = 'Failed to save location to database.';
+            try {
+                const errJson = await response.json();
+                if (errJson && errJson.detail) errText = errJson.detail;
+            } catch (err) {}
+            showToast(`❌ Error: ${errText}`, 'error');
+        }
+    } catch (err) {
+        showToast(`❌ Connection Error: ${err.message || err}`, 'error');
+    }
 };
 
-window.deleteLocationByAdmin = function(locId) {
-    state.serviceableLocations = state.serviceableLocations.filter(l => l.id !== locId);
-    // Locations persisted in SQLite
+window.deleteLocationByAdmin = async function(locId) {
+    state.serviceableLocations = state.serviceableLocations.filter(l => String(l.id) !== String(locId));
     renderAdminLocationsList();
     renderServiceableCitiesDatalist();
-    showToast('Location removed', 'info');
+
+    try {
+        await fetch(`${API_BASE_URL}/locations/${locId}`, { method: 'DELETE' });
+        showToast('Location removed from database', 'info');
+    } catch (e) {
+        showToast('Removed location locally', 'info');
+    }
 };
 
 async function registerUser(email, otp, password, fullName, role, supplierCompany = '', phone = '') {
