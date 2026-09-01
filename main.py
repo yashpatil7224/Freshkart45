@@ -1421,7 +1421,7 @@ def toggle_wishlist_item(payload: schemas.WishlistToggle, db: Session = Depends(
 def get_coupons(db: Session = Depends(get_db)):
     if mongo_db.is_mongo_active():
         m_coupons = mongo_db.mongo_get_all_coupons()
-        if m_coupons:
+        if m_coupons is not None:
             res = []
             for idx, c in enumerate(m_coupons):
                 if c.get("is_active") is False:
@@ -1439,11 +1439,20 @@ def get_coupons(db: Session = Depends(get_db)):
 
 @app.post("/api/coupons", response_model=schemas.CouponResponse)
 def create_coupon(coupon_data: schemas.CouponCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.Coupon).filter(models.Coupon.code == coupon_data.code.upper()).first()
+    code_clean = coupon_data.code.strip().upper()
+    
+    # Check duplicate in MongoDB if active
+    if mongo_db.is_mongo_active():
+        all_c = mongo_db.mongo_get_all_coupons()
+        if any(str(c.get("code", "")).upper() == code_clean for c in all_c):
+            raise HTTPException(status_code=400, detail=f"Coupon code '{code_clean}' already exists in database!")
+    
+    existing = db.query(models.Coupon).filter(models.Coupon.code == code_clean).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Coupon code already exists")
+        raise HTTPException(status_code=400, detail=f"Coupon code '{code_clean}' already exists in database!")
+    
     new_coupon = models.Coupon(
-        code=coupon_data.code.upper(),
+        code=code_clean,
         discount_percent=coupon_data.discount_percent,
         min_order=coupon_data.min_order or 0.0,
         description=coupon_data.description or "",
@@ -1465,8 +1474,9 @@ def create_coupon(coupon_data: schemas.CouponCreate, db: Session = Depends(get_d
                 "is_active": new_coupon.is_active
             })
             print(f"[MONGODB SYNC SUCCESS] Coupon '{new_coupon.code}' saved to MongoDB Atlas!")
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[MONGODB SYNC ERROR] Could not save coupon: {err}")
+            raise HTTPException(status_code=500, detail=f"Failed to save coupon to MongoDB: {str(err)}")
 
     return new_coupon
 
@@ -1486,7 +1496,7 @@ def delete_coupon(coupon_id: int, db: Session = Depends(get_db)):
 def get_locations(db: Session = Depends(get_db)):
     if mongo_db.is_mongo_active():
         m_locs = mongo_db.mongo_get_all_locations()
-        if m_locs:
+        if m_locs is not None:
             res = []
             for idx, l in enumerate(m_locs):
                 res.append(schemas.LocationResponse(
@@ -1500,12 +1510,20 @@ def get_locations(db: Session = Depends(get_db)):
 
 @app.post("/api/locations", response_model=schemas.LocationResponse)
 def create_location(loc_data: schemas.LocationCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.Location).filter(models.Location.pincode == loc_data.pincode).first()
+    pin_clean = str(loc_data.pincode).strip()
+    
+    if mongo_db.is_mongo_active():
+        all_l = mongo_db.mongo_get_all_locations()
+        if any(str(l.get("pincode", "")).strip() == pin_clean for l in all_l):
+            raise HTTPException(status_code=400, detail=f"Pincode '{pin_clean}' already added in database!")
+
+    existing = db.query(models.Location).filter(models.Location.pincode == pin_clean).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Pincode already added")
+        raise HTTPException(status_code=400, detail=f"Pincode '{pin_clean}' already added in database!")
+
     new_loc = models.Location(
         city=loc_data.city,
-        pincode=loc_data.pincode,
+        pincode=pin_clean,
         delivery_time=loc_data.delivery_time or "15 Mins"
     )
     db.add(new_loc)
@@ -1521,8 +1539,9 @@ def create_location(loc_data: schemas.LocationCreate, db: Session = Depends(get_
                 "delivery_time": new_loc.delivery_time
             })
             print(f"[MONGODB SYNC SUCCESS] Location '{new_loc.pincode}' saved to MongoDB Atlas!")
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[MONGODB SYNC ERROR] Could not save location: {err}")
+            raise HTTPException(status_code=500, detail=f"Failed to save location to MongoDB: {str(err)}")
 
     return new_loc
 
