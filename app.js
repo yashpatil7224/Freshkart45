@@ -342,9 +342,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await fetchProductsFromAPI();
     await fetchCouponsFromAPI();
     await fetchLocationsFromAPI();
-    if (state.currentUser) {
-        await syncUserDataFromDB();
-    }
     renderCategories();
     renderProducts();
     updateCartUI();
@@ -356,7 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 5. FETCH PRODUCTS FROM FASTAPI REST API
 async function fetchProductsFromAPI() {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/products`, {}, 1200);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/products`, {}, 15000);
         if (response && response.ok) {
             const data = await response.json();
             if (data && data.length > 0) {
@@ -385,7 +382,7 @@ async function fetchProductsFromAPI() {
 
 async function fetchCouponsFromAPI() {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/coupons`, {}, 1200);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/coupons`, {}, 15000);
         if (response && response.ok) {
             const data = await response.json();
             if (data && data.length > 0) state.coupons = data;
@@ -395,7 +392,7 @@ async function fetchCouponsFromAPI() {
 
 async function fetchLocationsFromAPI() {
     try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/locations`, {}, 1200);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/locations`, {}, 15000);
         if (response && response.ok) {
             const data = await response.json();
             if (data && data.length > 0) {
